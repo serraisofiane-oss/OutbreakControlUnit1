@@ -1,1 +1,116 @@
+name: Build Outbreak Control Unit APK
 
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out project
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK
+        run: |
+          yes | sdkmanager --licenses
+          sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Prepare Android project
+        run: |
+          set -e
+          mkdir -p app/src/main/java/com/school/outbreakcontrol app/src/main/assets
+
+          cat > settings.gradle <<'EOF'
+          pluginManagement { repositories { google(); mavenCentral(); gradlePluginPortal() } }
+          dependencyResolutionManagement { repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS); repositories { google(); mavenCentral() } }
+          rootProject.name = "OutbreakControlUnit"
+          include(":app")
+          EOF
+
+          cat > build.gradle <<'EOF'
+          plugins { id "com.android.application" version "8.6.1" apply false }
+          EOF
+
+          cat > gradle.properties <<'EOF'
+          android.useAndroidX=true
+          org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8
+          EOF
+
+          cat > app/build.gradle <<'EOF'
+          plugins { id "com.android.application" }
+          android {
+              namespace "com.school.outbreakcontrol"
+              compileSdk 35
+              defaultConfig {
+                  applicationId "com.school.outbreakcontrol"
+                  minSdk 23
+                  targetSdk 28
+                  versionCode 1
+                  versionName "1.0"
+              }
+          }
+          EOF
+
+          cat > app/src/main/AndroidManifest.xml <<'EOF'
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+              <application android:theme="@android:style/Theme.Material.Light.NoActionBar" android:label="Outbreak Control Unit" android:usesCleartextTraffic="true">
+                  <activity android:name=".MainActivity" android:exported="true">
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN" />
+                          <category android:name="android.intent.category.LAUNCHER" />
+                      </intent-filter>
+                  </activity>
+              </application>
+          </manifest>
+          EOF
+
+          cat > app/src/main/java/com/school/outbreakcontrol/MainActivity.java <<'EOF'
+          package com.school.outbreakcontrol;
+          import android.app.Activity;
+          import android.os.Bundle;
+          import android.webkit.WebView;
+          import android.webkit.WebSettings;
+          public class MainActivity extends Activity {
+              @Override public void onCreate(Bundle savedInstanceState) {
+                  super.onCreate(savedInstanceState);
+                  WebView web = new WebView(this);
+                  WebSettings settings = web.getSettings();
+                  settings.setJavaScriptEnabled(true);
+                  web.loadUrl("file:///android_asset/index.html");
+                  setContentView(web);
+              }
+          }
+          EOF
+
+          cat > app/src/main/assets/index.html <<'EOF'
+          <!doctype html><html lang="en"><meta name="viewport" content="width=device-width,initial-scale=1"><meta charset="utf-8"><title>Outbreak Control Unit</title><style>body{font:18px Arial;background:#101827;color:#f4f7fb;margin:0;padding:22px}article{background:#1c2b40;border-radius:14px;padding:22px;margin:18px 0}button{font-size:18px;padding:12px;margin:5px;border:0;border-radius:8px}small{color:#b6c7dc}</style><h1>Outbreak Control Unit</h1><p>Secondary-school learning project · Fictional scenario</p><div id="slide"></div><button onclick="move(-1)">← Previous</button><button onclick="move(1)">Next →</button><p id="count"></p><script>const slides=[["Mission briefing","You are an international scientific response team investigating a fictional outbreak. All case numbers in this learning activity are invented."],["First signals","Clinics report an unusual cluster of fever and fatigue. Verify reports before drawing conclusions."],["Define the outbreak","A suspected outbreak is more cases than expected in a particular place and time."],["Collect reliable data","Record symptom onset, location at a suitable privacy level, age group, and test status. Protect personal information."],["Build a case definition","Agree on consistent criteria for suspected, probable, and confirmed cases with public-health experts."],["Investigate transmission","Create an epidemic curve and compare exposures. Correlation alone does not prove causation."],["Prevention","Hand hygiene, ventilation, appropriate protective equipment, vaccination when available, and staying home when ill can reduce spread."],["Public-health systems","Coordinate laboratories, hospitals, local authorities, and transparent public communication."],["Biotechnology","Diagnostic tests can detect evidence of a pathogen. Results must be interpreted with sensitivity, specificity, and context."],["Statistics","Calculate attack rates only with suitable denominators. Show uncertainty and avoid misleading charts."],["AI and privacy","Models may help identify patterns but can be biased. Minimize data collection and require human oversight."],["Response plan","Communicate clearly, support affected communities, use evidence-based measures, and reassess as evidence changes."],["Knowledge check","Why must fictional data be labelled? Answer: to prevent confusion with real public-health alerts and support responsible interpretation."]];let i=0;function draw(){document.getElementById("slide").innerHTML="<article><small>OUTBREAK CONTROL UNIT</small><h2>"+slides[i][0]+"</h2><p>"+slides[i][1]+"</p></article>";document.getElementById("count").textContent="Slide "+(i+1)+" of "+slides.length}function move(d){i=(i+d+slides.length)%slides.length;draw()}draw();</script></html>
+          EOF
+
+      - name: Build debug APK
+        run: gradle --no-daemon assembleDebug
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Outbreak-Control-Unit-APK
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
